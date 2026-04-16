@@ -2,7 +2,7 @@
 
 一个基于 `Vue 3 + Pinia + Tauri 2` 的桌面待办悬浮窗应用。
 
-它的目标不是网页待办，而是一个真正运行在 Windows 桌面上的提醒工具：
+一个运行在 Windows 桌面上的提醒工具：
 
 - 桌面悬浮窗负责展示事项
 - 独立编辑窗口负责新增、编辑、样式设置
@@ -92,6 +92,10 @@ npm run tauri:dev
 - 托盘逻辑
 
 ## 生产构建
+
+### 便捷方法
+
+在[release](https://github.com/cccxyx/Desktop-Reminder/releases)界面直接下载。
 
 ### 构建前端
 

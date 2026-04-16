@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { Window, getCurrentWindow } from '@tauri-apps/api/window'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { LogicalSize, Window, getCurrentWindow } from '@tauri-apps/api/window'
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
 import { StateFlags, saveWindowState } from '@tauri-apps/plugin-window-state'
 
@@ -50,6 +50,7 @@ const autostartEnabled = ref(false)
 const autostartBusy = ref(false)
 const currentWindowLabel = ref<string | null>(null)
 const windowUnlistenFns: Array<() => void> = []
+const floatingShellRef = ref<HTMLElement | null>(null)
 
 const panelStyle = computed(() => ({
   '--panel-bg': reminderStore.settings.panelBackground,
@@ -218,6 +219,24 @@ const persistFloatingWindowState = async () => {
   await saveWindowState(StateFlags.POSITION | StateFlags.SIZE | StateFlags.VISIBLE)
 }
 
+const syncFloatingWindowSize = async () => {
+  if (!isTauri || currentWindowLabel.value !== 'floating') {
+    return
+  }
+
+  await nextTick()
+
+  if (!floatingShellRef.value) {
+    return
+  }
+
+  const contentHeight = Math.ceil(floatingShellRef.value.scrollHeight + 24)
+  const targetHeight = Math.min(Math.max(contentHeight, 260), 560)
+  const targetWidth = 388
+
+  await getCurrentWindow().setSize(new LogicalSize(targetWidth, targetHeight))
+}
+
 const startTaskEdit = async (task: Task) => {
   if (isFloatingView) {
     await openEditorWindow()
@@ -353,6 +372,17 @@ const bindFloatingWindowPersistence = async () => {
   windowUnlistenFns.push(await appWindow.onResized(() => void persistFloatingWindowState()))
 }
 
+watch(
+  [
+    () => reminderStore.deadlineTasks.length,
+    () => reminderStore.openTasks.length,
+    () => reminderStore.settings.fontScale,
+  ],
+  () => {
+    void syncFloatingWindowSize()
+  },
+)
+
 onMounted(async () => {
   document.body.classList.toggle('is-floating-window', isFloatingView)
   reminderStore.initialize()
@@ -364,6 +394,7 @@ onMounted(async () => {
   currentWindowLabel.value = getCurrentWindow().label
   await syncAutostartState()
   await bindFloatingWindowPersistence()
+  await syncFloatingWindowSize()
 })
 
 onBeforeUnmount(() => {
@@ -376,15 +407,15 @@ onBeforeUnmount(() => {
 <template>
   <div :class="['app-shell', { floating: isFloatingView }]" :style="panelStyle">
     <template v-if="isFloatingView">
-      <main class="floating-shell">
-        <header class="floating-topbar" data-tauri-drag-region>
-          <div data-tauri-drag-region>
+      <main ref="floatingShellRef" class="floating-shell">
+        <header class="floating-topbar">
+          <div class="floating-drag-zone" data-tauri-drag-region>
             <p class="floating-label">Desktop Reminder</p>
             <h1>{{ previewClock }}</h1>
           </div>
           <div class="topbar-actions">
-            <button class="mini-button secondary" type="button" @click.stop="openEditorWindow">Edit</button>
-            <button class="mini-button secondary" type="button" @click.stop="hideCurrentWindow">Hide</button>
+            <button class="mini-button secondary" type="button" @mousedown.stop @click.stop="openEditorWindow">Edit</button>
+            <button class="mini-button secondary" type="button" @mousedown.stop @click.stop="hideCurrentWindow">Hide</button>
           </div>
         </header>
 
@@ -749,9 +780,9 @@ onBeforeUnmount(() => {
 }
 
 .floating-shell {
-  width: 420px;
+  width: 388px;
   max-width: calc(100vw - 24px);
-  padding: 18px;
+  padding: 16px;
   border-radius: var(--panel-radius);
   color: var(--panel-text);
   background: color-mix(in srgb, var(--panel-bg) calc(var(--panel-opacity) * 100%), transparent);
@@ -789,11 +820,18 @@ onBeforeUnmount(() => {
 
 .floating-topbar {
   gap: 16px;
-  cursor: grab;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
+  align-items: flex-start;
 }
 
-.floating-topbar:active {
+.floating-drag-zone {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 0 10px;
+  cursor: grab;
+}
+
+.floating-drag-zone:active {
   cursor: grabbing;
 }
 
@@ -813,7 +851,7 @@ onBeforeUnmount(() => {
 }
 
 .floating-topbar h1 {
-  font-size: 1.5rem;
+  font-size: 1.35rem;
 }
 
 .floating-section + .floating-section,
@@ -856,7 +894,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 14px;
+  padding: 12px;
   background: var(--panel-card);
 }
 
@@ -1056,6 +1094,7 @@ onBeforeUnmount(() => {
   background: #ff9b71;
   color: #132134;
   font-weight: 700;
+  margin-top: 15px;
 }
 
 .ghost-button,
