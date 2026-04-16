@@ -81,7 +81,6 @@ const autostartSummary = computed(() => {
   if (!isTauri) {
     return '浏览器模式下不会注册开机启动。'
   }
-
   return autostartEnabled.value
     ? '已启用开机启动。系统登录后会自动恢复悬浮窗。'
     : '当前未启用开机启动。'
@@ -91,11 +90,9 @@ const taskCanSubmit = computed(() => {
   if (!taskForm.title.trim()) {
     return false
   }
-
   if (taskForm.zone === 'deadline' && !taskForm.deadlineDate) {
     return false
   }
-
   return true
 })
 
@@ -105,7 +102,6 @@ const buildDeadlineTimestamp = () => {
   if (!taskForm.deadlineDate) {
     return null
   }
-
   const date = new Date(`${taskForm.deadlineDate}T${taskForm.deadlineHour}:${taskForm.deadlineMinute}:00`)
   return Number.isNaN(date.getTime()) ? null : date.getTime()
 }
@@ -117,12 +113,10 @@ const hydrateDeadlineForm = (timestamp: number | null) => {
     taskForm.deadlineMinute = '00'
     return
   }
-
   const date = new Date(timestamp)
   const offset = date.getTimezoneOffset()
   const local = new Date(date.getTime() - offset * 60_000)
   const [datePart, timePart] = local.toISOString().slice(0, 16).split('T')
-
   taskForm.deadlineDate = datePart ?? ''
   taskForm.deadlineHour = timePart?.slice(0, 2) ?? '11'
   taskForm.deadlineMinute = timePart?.slice(3, 5) ?? '00'
@@ -132,7 +126,6 @@ const formatAbsoluteTime = (timestamp: number | null) => {
   if (timestamp === null) {
     return 'No deadline'
   }
-
   return new Intl.DateTimeFormat('zh-CN', {
     month: '2-digit',
     day: '2-digit',
@@ -146,25 +139,20 @@ const formatRemaining = (timestamp: number | null) => {
   if (timestamp === null) {
     return 'No deadline'
   }
-
   const diff = timestamp - reminderStore.currentTime
   if (diff <= 0) {
     return 'Expired'
   }
-
   const totalMinutes = Math.floor(diff / 60_000)
   const days = Math.floor(totalMinutes / (60 * 24))
   const hours = Math.floor((totalMinutes % (60 * 24)) / 60)
   const minutes = totalMinutes % 60
-
   if (days > 0) {
     return `${days}d ${hours}h left`
   }
-
   if (hours > 0) {
     return `${hours}h ${minutes}m left`
   }
-
   return `${minutes}m left`
 }
 
@@ -172,15 +160,12 @@ const formatCacheReason = (reason: CacheReason | null) => {
   if (reason === 'expired') {
     return 'Expired and archived'
   }
-
   if (reason === 'done') {
     return 'Completed and archived'
   }
-
   if (reason === 'dismissed') {
     return 'Dismissed manually'
   }
-
   return 'Archived'
 }
 
@@ -215,33 +200,42 @@ const persistFloatingWindowState = async () => {
   if (!isTauri || currentWindowLabel.value !== 'floating') {
     return
   }
-
   await saveWindowState(StateFlags.POSITION | StateFlags.SIZE | StateFlags.VISIBLE)
 }
 
+// ======================================
+// ========== 新增：内容高度自适应实现 =====
+// ======================================
 const syncFloatingWindowSize = async () => {
-  if (!isTauri || currentWindowLabel.value !== 'floating') {
-    return
-  }
-
+  if (!(isTauri && currentWindowLabel.value === 'floating')) return
   await nextTick()
-
-  if (!floatingShellRef.value) {
-    return
-  }
-
-  const contentHeight = Math.ceil(floatingShellRef.value.scrollHeight + 24)
-  const targetHeight = Math.min(Math.max(contentHeight, 260), 560)
+  if (!floatingShellRef.value) return
+  // 获取内容高度
+  const rect = floatingShellRef.value.getBoundingClientRect()
+  // 约束最小/最大高度
+  const minHeight = 220, maxHeight = 680
+  let targetHeight = Math.ceil(rect.height)
+  targetHeight = Math.max(minHeight, Math.min(maxHeight, targetHeight))
   const targetWidth = 388
-
   await getCurrentWindow().setSize(new LogicalSize(targetWidth, targetHeight))
 }
+
+watch(
+  [
+    () => reminderStore.deadlineTasks.length,
+    () => reminderStore.openTasks.length,
+    () => reminderStore.settings.fontScale,
+    // 如有更多内容相关也可加
+  ],
+  () => { void syncFloatingWindowSize() }
+)
+
+// ===========================
 
 const startTaskEdit = async (task: Task) => {
   if (isFloatingView) {
     await openEditorWindow()
   }
-
   editorTab.value = 'tasks'
   taskForm.id = task.id
   taskForm.title = task.title
@@ -265,20 +259,17 @@ const submitTask = () => {
   if (!taskCanSubmit.value) {
     return
   }
-
   const payload = {
     title: taskForm.title,
     notes: taskForm.notes,
     zone: taskForm.zone,
     deadlineAt: taskForm.zone === 'deadline' ? buildDeadlineTimestamp() : null,
   }
-
   if (taskForm.id) {
     reminderStore.updateTask(taskForm.id, payload)
   } else {
     reminderStore.addTask(payload)
   }
-
   resetTaskForm()
 }
 
@@ -286,7 +277,6 @@ const submitRecurring = () => {
   if (!recurringCanSubmit.value) {
     return
   }
-
   reminderStore.saveRecurringRule({
     id: recurringForm.id || undefined,
     title: recurringForm.title,
@@ -296,7 +286,6 @@ const submitRecurring = () => {
     minute: recurringForm.minute,
     enabled: recurringForm.enabled,
   })
-
   resetRecurringForm()
 }
 
@@ -304,7 +293,6 @@ const openEditorWindow = async () => {
   if (!isTauri) {
     return
   }
-
   const editorWindow = await Window.getByLabel('editor')
   if (editorWindow) {
     await editorWindow.show()
@@ -317,7 +305,6 @@ const openFloatingWindow = async () => {
   if (!isTauri) {
     return
   }
-
   const floatingWindow = await Window.getByLabel('floating')
   if (floatingWindow) {
     await floatingWindow.show()
@@ -329,7 +316,6 @@ const hideCurrentWindow = async () => {
   if (!isTauri) {
     return
   }
-
   await getCurrentWindow().hide()
 }
 
@@ -338,7 +324,6 @@ const syncAutostartState = async () => {
     autostartEnabled.value = false
     return
   }
-
   autostartEnabled.value = await isEnabled()
 }
 
@@ -346,9 +331,7 @@ const toggleAutostart = async () => {
   if (!isTauri || autostartBusy.value) {
     return
   }
-
   autostartBusy.value = true
-
   try {
     if (autostartEnabled.value) {
       await disable()
@@ -366,22 +349,10 @@ const bindFloatingWindowPersistence = async () => {
   if (!isTauri || currentWindowLabel.value !== 'floating') {
     return
   }
-
   const appWindow = getCurrentWindow()
   windowUnlistenFns.push(await appWindow.onMoved(() => void persistFloatingWindowState()))
   windowUnlistenFns.push(await appWindow.onResized(() => void persistFloatingWindowState()))
 }
-
-watch(
-  [
-    () => reminderStore.deadlineTasks.length,
-    () => reminderStore.openTasks.length,
-    () => reminderStore.settings.fontScale,
-  ],
-  () => {
-    void syncFloatingWindowSize()
-  },
-)
 
 onMounted(async () => {
   document.body.classList.toggle('is-floating-window', isFloatingView)
