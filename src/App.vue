@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { isTauri as checkIsTauri } from '@tauri-apps/api/core'
 import { LogicalSize, Window, getCurrentWindow } from '@tauri-apps/api/window'
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
 import { StateFlags, saveWindowState } from '@tauri-apps/plugin-window-state'
@@ -8,7 +9,7 @@ import { type CacheReason, type RecurringRule, type Task, type TaskZone, useRemi
 
 const reminderStore = useReminderStore()
 
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+const isTauri = checkIsTauri()
 const viewParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('view') : null
 const isFloatingView = viewParam === 'floating'
 
@@ -76,6 +77,8 @@ const recurringFormTitle = computed(() => (recurringForm.id ? 'Edit Weekly Rule'
 const taskSubmitLabel = computed(() => (taskForm.id ? 'Update task' : 'Create task'))
 const recurringSubmitLabel = computed(() => (recurringForm.id ? 'Update weekly rule' : 'Create weekly rule'))
 const activeTaskCount = computed(() => reminderStore.deadlineTasks.length + reminderStore.openTasks.length)
+const visibleDeadlineTasks = computed(() => reminderStore.deadlineTasks.slice(0, 5))
+const hiddenDeadlineCount = computed(() => Math.max(reminderStore.deadlineTasks.length - visibleDeadlineTasks.value.length, 0))
 
 const autostartSummary = computed(() => {
   if (!isTauri) {
@@ -203,21 +206,35 @@ const persistFloatingWindowState = async () => {
   await saveWindowState(StateFlags.POSITION | StateFlags.SIZE | StateFlags.VISIBLE)
 }
 
-// ======================================
-// ========== 新增：内容高度自适应实现 =====
-// ======================================
+// 悬浮窗内容高度自适应实现
 const syncFloatingWindowSize = async () => {
   if (!(isTauri && currentWindowLabel.value === 'floating')) return
   await nextTick()
   if (!floatingShellRef.value) return
-  // 获取内容高度
-  const rect = floatingShellRef.value.getBoundingClientRect()
-  // 约束最小/最大高度
-  const minHeight = 220, maxHeight = 680
-  let targetHeight = Math.ceil(rect.height)
+  const windowChromeHeight = 56
+  const contentHeight = floatingShellRef.value.scrollHeight + windowChromeHeight
+  const minHeight = 280, maxHeight = 620
+  let targetHeight = Math.ceil(contentHeight)
   targetHeight = Math.max(minHeight, Math.min(maxHeight, targetHeight))
-  const targetWidth = 388
-  await getCurrentWindow().setSize(new LogicalSize(targetWidth, targetHeight))
+  await getCurrentWindow().setSize(new LogicalSize(388, targetHeight))
+}
+
+const startFloatingDrag = async (event: MouseEvent) => {
+  if (!(isTauri && currentWindowLabel.value === 'floating') || event.button !== 0) {
+    return
+  }
+
+  const target = event.target as HTMLElement | null
+  if (target?.closest('button, input, textarea, select, option, a')) {
+    return
+  }
+
+  try {
+    event.preventDefault()
+    await getCurrentWindow().startDragging()
+  } catch (error) {
+    console.error('Failed to start floating drag', error)
+  }
 }
 
 watch(
@@ -225,12 +242,10 @@ watch(
     () => reminderStore.deadlineTasks.length,
     () => reminderStore.openTasks.length,
     () => reminderStore.settings.fontScale,
-    // 如有更多内容相关也可加
   ],
   () => { void syncFloatingWindowSize() }
 )
 
-// ===========================
 
 const startTaskEdit = async (task: Task) => {
   if (isFloatingView) {
@@ -293,11 +308,18 @@ const openEditorWindow = async () => {
   if (!isTauri) {
     return
   }
-  const editorWindow = await Window.getByLabel('editor')
-  if (editorWindow) {
+  try {
+    const editorWindow = await Window.getByLabel('editor')
+    if (!editorWindow) {
+      console.warn('Editor window not found')
+      return
+    }
+
     await editorWindow.show()
     await editorWindow.unminimize()
     await editorWindow.setFocus()
+  } catch (error) {
+    console.error('Failed to open editor window', error)
   }
 }
 
@@ -305,10 +327,17 @@ const openFloatingWindow = async () => {
   if (!isTauri) {
     return
   }
-  const floatingWindow = await Window.getByLabel('floating')
-  if (floatingWindow) {
+  try {
+    const floatingWindow = await Window.getByLabel('floating')
+    if (!floatingWindow) {
+      console.warn('Floating window not found')
+      return
+    }
+
     await floatingWindow.show()
     await floatingWindow.unminimize()
+  } catch (error) {
+    console.error('Failed to open floating window', error)
   }
 }
 
@@ -316,7 +345,11 @@ const hideCurrentWindow = async () => {
   if (!isTauri) {
     return
   }
-  await getCurrentWindow().hide()
+  try {
+    await getCurrentWindow().hide()
+  } catch (error) {
+    console.error('Failed to hide current window', error)
+  }
 }
 
 const syncAutostartState = async () => {
@@ -380,7 +413,7 @@ onBeforeUnmount(() => {
     <template v-if="isFloatingView">
       <main ref="floatingShellRef" class="floating-shell">
         <header class="floating-topbar">
-          <div class="floating-drag-zone" data-tauri-drag-region>
+          <div class="floating-drag-zone" @mousedown="startFloatingDrag">
             <p class="floating-label">Desktop Reminder</p>
             <h1>{{ previewClock }}</h1>
           </div>
@@ -398,7 +431,7 @@ onBeforeUnmount(() => {
 
           <div v-if="reminderStore.deadlineTasks.length === 0" class="empty-card">暂时没有带截止时间的事项</div>
 
-          <article v-for="task in reminderStore.deadlineTasks" :key="task.id" class="floating-card urgent">
+          <article v-for="task in visibleDeadlineTasks" :key="task.id" class="floating-card urgent">
             <div class="card-copy" @click="startTaskEdit(task)">
               <strong>{{ task.title }}</strong>
               <p>{{ formatAbsoluteTime(task.deadlineAt) }}</p>
@@ -406,6 +439,10 @@ onBeforeUnmount(() => {
             </div>
             <button class="mini-button" type="button" @click="reminderStore.moveTaskToCache(task.id, 'done')">Done</button>
           </article>
+
+          <div v-if="hiddenDeadlineCount > 0" class="floating-overflow-note">
+            还有 {{ hiddenDeadlineCount }} 条更晚截止的任务未显示
+          </div>
         </section>
 
         <section class="floating-section">
@@ -733,6 +770,7 @@ onBeforeUnmount(() => {
 
 :global(body.is-floating-window) {
   background: transparent;
+  overflow: hidden;
 }
 
 :global(*) {
@@ -746,13 +784,16 @@ onBeforeUnmount(() => {
 
 .app-shell.floating {
   min-height: auto;
-  padding: 12px;
+  width: 100%;
+  padding: 0;
   background: transparent;
+  overflow: hidden;
 }
 
 .floating-shell {
-  width: 388px;
-  max-width: calc(100vw - 24px);
+  width: 100%;
+  max-width: 100%;
+  min-height: 100%;
   padding: 16px;
   border-radius: var(--panel-radius);
   color: var(--panel-text);
@@ -793,6 +834,7 @@ onBeforeUnmount(() => {
   gap: 16px;
   margin-bottom: 16px;
   align-items: flex-start;
+  flex-wrap: nowrap;
 }
 
 .floating-drag-zone {
@@ -872,6 +914,13 @@ onBeforeUnmount(() => {
 .floating-card + .floating-card,
 .task-row + .task-row {
   margin-top: 10px;
+}
+
+.floating-overflow-note {
+  margin-top: 10px;
+  padding: 0 4px;
+  font-size: 0.84rem;
+  color: rgba(245, 239, 228, 0.62);
 }
 
 .floating-card.urgent {

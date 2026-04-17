@@ -135,6 +135,7 @@ export const useReminderStore = defineStore('reminder', () => {
   const currentTime = ref(Date.now())
   const initialized = ref(false)
   let timer: number | null = null
+  let storageListenerBound = false
 
   const activeTasks = computed(() => sortActiveTasks(tasks.value.filter((task) => task.status === 'active')))
   const deadlineTasks = computed(() => activeTasks.value.filter((task) => task.zone === 'deadline'))
@@ -160,6 +161,27 @@ export const useReminderStore = defineStore('reminder', () => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot))
   }
 
+  const applySnapshot = (parsed: Partial<ReminderSnapshot>) => {
+    const snapshot = defaultSnapshot()
+    tasks.value = Array.isArray(parsed.tasks) ? parsed.tasks.filter(isValidTask) : snapshot.tasks
+    recurringRules.value = Array.isArray(parsed.recurringRules)
+      ? parsed.recurringRules.filter(isValidRule)
+      : snapshot.recurringRules
+    recurrenceHistory.value = Array.isArray(parsed.recurrenceHistory)
+      ? parsed.recurrenceHistory.filter(
+          (entry): entry is RecurrenceHistoryEntry =>
+            Boolean(entry) &&
+            typeof entry === 'object' &&
+            typeof (entry as RecurrenceHistoryEntry).occurrenceKey === 'string' &&
+            typeof (entry as RecurrenceHistoryEntry).deadlineAt === 'number',
+        )
+      : snapshot.recurrenceHistory
+    settings.value = {
+      ...snapshot.settings,
+      ...(parsed.settings ?? {}),
+    }
+  }
+
   const hydrate = () => {
     if (typeof window === 'undefined') {
       return
@@ -173,33 +195,27 @@ export const useReminderStore = defineStore('reminder', () => {
 
     try {
       const parsed = JSON.parse(raw) as Partial<ReminderSnapshot>
-      const snapshot = defaultSnapshot()
-      tasks.value = Array.isArray(parsed.tasks) ? parsed.tasks.filter(isValidTask) : snapshot.tasks
-      recurringRules.value = Array.isArray(parsed.recurringRules)
-        ? parsed.recurringRules.filter(isValidRule)
-        : snapshot.recurringRules
-      recurrenceHistory.value = Array.isArray(parsed.recurrenceHistory)
-        ? parsed.recurrenceHistory.filter(
-            (entry): entry is RecurrenceHistoryEntry =>
-              Boolean(entry) &&
-              typeof entry === 'object' &&
-              typeof (entry as RecurrenceHistoryEntry).occurrenceKey === 'string' &&
-              typeof (entry as RecurrenceHistoryEntry).deadlineAt === 'number',
-          )
-        : snapshot.recurrenceHistory
-      settings.value = {
-        ...snapshot.settings,
-        ...(parsed.settings ?? {}),
-      }
+      applySnapshot(parsed)
     } catch {
       const snapshot = defaultSnapshot()
-      tasks.value = snapshot.tasks
-      recurringRules.value = snapshot.recurringRules
-      recurrenceHistory.value = snapshot.recurrenceHistory
-      settings.value = snapshot.settings
+      applySnapshot(snapshot)
     }
 
     initialized.value = true
+  }
+
+  const handleStorageChange = (event: StorageEvent) => {
+    if (event.key !== STORAGE_KEY || event.newValue === null) {
+      return
+    }
+
+    try {
+      applySnapshot(JSON.parse(event.newValue) as Partial<ReminderSnapshot>)
+      syncTime()
+    } catch {
+      hydrate()
+      syncTime()
+    }
   }
 
   const pruneRecurrenceHistory = (now = Date.now()) => {
@@ -292,6 +308,11 @@ export const useReminderStore = defineStore('reminder', () => {
       return
     }
 
+    if (!storageListenerBound) {
+      window.addEventListener('storage', handleStorageChange)
+      storageListenerBound = true
+    }
+
     timer = window.setInterval(() => {
       syncTime()
     }, 30_000)
@@ -301,6 +322,11 @@ export const useReminderStore = defineStore('reminder', () => {
     if (timer !== null && typeof window !== 'undefined') {
       window.clearInterval(timer)
       timer = null
+    }
+
+    if (storageListenerBound && typeof window !== 'undefined') {
+      window.removeEventListener('storage', handleStorageChange)
+      storageListenerBound = false
     }
   }
 

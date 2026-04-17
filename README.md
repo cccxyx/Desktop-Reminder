@@ -1,6 +1,6 @@
 # Desktop Reminder
 
-一个基于 `Vue 3 + Pinia + Tauri 2` 的桌面待办悬浮窗应用。
+一个基于 `Vue 3 + Pinia + Tauri 2` 的桌面待办悬浮窗应用，rust与前端开发结合的练习作品。
 
 一个运行在 Windows 桌面上的提醒工具：
 

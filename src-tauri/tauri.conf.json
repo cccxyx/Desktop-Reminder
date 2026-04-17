@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Desktop Reminder",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.desktop.reminder",
   "build": {
     "frontendDist": "../dist",
@@ -27,17 +27,17 @@
         "title": "Desktop Reminder",
         "url": "index.html?view=floating",
         "width": 388,
-        "height": 320,
+        "height": 360,
         "minWidth": 320,
-        "minHeight": 240,
-        "resizable": true,
+        "minHeight": 280,
+        "resizable": false,
         "fullscreen": false,
-        "transparent": true,
+        "transparent": false,
         "decorations": false,
         "alwaysOnTop": false,
-        "alwaysOnBottom": true,
+        "alwaysOnBottom": false,
         "skipTaskbar": true,
-        "shadow": false
+        "shadow": true
       }
     ],
     "security": {
