@@ -759,7 +759,7 @@ onBeforeUnmount(() => {
 <style scoped>
 :global(body) {
   margin: 0;
-  min-width: 320px;
+  width:100vw;
   background:
     radial-gradient(circle at top left, rgba(255, 184, 108, 0.24), transparent 28%),
     radial-gradient(circle at bottom right, rgba(88, 120, 255, 0.18), transparent 24%),
@@ -791,17 +791,15 @@ onBeforeUnmount(() => {
 }
 
 .floating-shell {
+  overflow-y: visible !important;
+  width: 388px;
+  max-width: calc(100vw - 24px);
   width: 100%;
-  max-width: 100%;
-  min-height: 100%;
+  max-width: none;
+  overflow: hidden;
   padding: 16px;
-  border-radius: var(--panel-radius);
-  color: var(--panel-text);
-  background: color-mix(in srgb, var(--panel-bg) calc(var(--panel-opacity) * 100%), transparent);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.34);
-  backdrop-filter: blur(20px);
-  font-size: calc(1rem * var(--font-scale));
+  align-items: flex-start;
+  flex-wrap: wrap;
 }
 
 .floating-topbar,

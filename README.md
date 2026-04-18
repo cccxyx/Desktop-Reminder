@@ -15,8 +15,7 @@
   - `No DDL`：不带截止时间的事项
 - 自动时间同步
   - 读取本机时间
-  - 过期 DDL 事项自动移入缓存区
-  - 缓存区保留 24 小时后自动删除
+  - 过期 DDL 事项自动移入缓存区，保留 24 小时后自动删除
 - 每周重复事项
   - 可设置固定星期和时间
   - 每周自动生成对应任务
@@ -91,33 +90,9 @@ npm run tauri:dev
 - 悬浮窗窗口
 - 托盘逻辑
 
-## 生产构建
-
-### 便捷方法
+## 下载地址
 
 在[release](https://github.com/cccxyx/Desktop-Reminder/releases)界面直接下载。
-
-### 构建前端
-
-```powershell
-npm run build
-```
-
-### 构建桌面安装包
-
-```powershell
-npm run tauri:build
-```
-
-构建产物默认在：
-
-- `src-tauri\target\release\bundle\nsis\`
-- `src-tauri\target\release\bundle\msi\`
-
-当前项目会生成两种 Windows 安装包：
-
-- `Desktop Reminder_0.1.0_x64-setup.exe`
-- `Desktop Reminder_0.1.0_x64_en-US.msi`
 
 ## 使用说明
 
